@@ -1,0 +1,115 @@
+              	; --------------------------------------
+              	; zasm: assemble "kernel.asm"
+              	; date: 2018-11-04 23:20:19
+              	; --------------------------------------
+
+
+              	; ***************************************************************************************
+              	; ***************************************************************************************
+              	;
+              	;		Name : 		kernel.asm
+              	;		Author :	Paul Robson (paul@robsons.org.uk)
+              	;		Date : 		4th November 2018
+              	;		Purpose :	MZ Virtual Kernel
+              	;
+              	; ***************************************************************************************
+              	; ***************************************************************************************
+              	
+5C00:         	Stack = $5C00
+              	
+8000:         				org 	$8000
+              	
+8000: F3      				di 											; no interrupts possible ever :)
+8001: DD210880				ld 		ix,MainLoop 						; IX is the 'next instruction'
+8005: 312F80  				ld 		sp,DemoCode 						; SP contains the code address
+              	
+              	; ***************************************************************************************
+              	;
+              	;			Main loop comes here. SP contains address of next instruction.
+              	;			8000-FFFF => Z80 code at that address
+              	;			0000-7FFF => Call routine at that address | 0x8000
+              	;
+              	; ***************************************************************************************
+              	
+8008:         	MainLoop:	
+8008: E1      				pop 	hl 									; get next instruction.
+8009: CB7C    				bit 	7,h 								; if bit 7 is set, it is an instruction
+800B: 2801    				jr 		z,IsCallRoutine 					; otherwise, it's a call instruction
+800D: E9      				jp 		(hl) 								; go do the instruction
+              	
+              	; ***************************************************************************************
+              	;
+              	;			Call routine. HL contains the routine address to call, save that
+              	;			bit 15 is zero.
+              	;
+              	; ***************************************************************************************
+              	
+800E:         	IsCallRoutine:
+800E: D9      				exx 										; switch to alt register set, save target
+              	
+800F:         	StackPointer:
+800F: ED73005C				ld 		(Stack),sp 							; save stack. This address is modified.
+              	
+8013: 211180  				ld 		hl,StackPointer+2 					; bump the 'stack pointer'
+8016: 34      				inc 	(hl) 								; e.g. the above save address
+8017: 34      				inc 	(hl)								; but only the LSB of that address
+              	
+8018: D9      				exx 										; get the address back
+8019: CBFC    				set 	7,h 								; make address in $8000-$FFFF
+801B: F9      				ld 		sp,hl 								; put in SP i.e. 'go there'
+801C: DDE9    				jp 		(ix) 								; and execute next.
+              	
+              	; ***************************************************************************************
+              	;
+              	;			This is a return instruction. It undoes the change of the
+              	; 			address at the instruction at 'StackPointer' and reloads
+              	;			the address.
+              	;
+              	; ***************************************************************************************
+              	
+801E: 2A1180  	ReturnCode:	ld 		hl,(StackPointer+2) 				; get the stack pointer
+8021: 2D      				dec 	l 									; back wind it.
+8022: 2D      				dec 	l
+8023: 221180  				ld 		(StackPointer+2),hl 				; write it back.
+8026: 222A80  				ld 		(Reloader+1),hl 					; and overwrite the code that loads this
+8029: 2A0000  	Reloader:	ld 		hl,(0000)							; this address here.
+              				;
+              				; TODO: here, H bit 0 indicates a far return.
+              				;
+802C: F9      				ld 		sp,hl 								; and go there
+802D: DDE9    				jp 		(ix) 								; execute again.
+              	
+802F: 0090    	DemoCode:	dw 		TestWord1
+8031: 0310    				dw 		TestCall1 & 0x7FFF
+              	
+8033: FFFFFFFF				org 	0x9000
+8037: FF...   	
+              				align 	2
+9000: 13      	TestWord1:	inc 	de
+9001: DDE9    				jp 		(ix)
+              	
+9003: 1E80    	TestCall1:	dw 		ReturnCode
+              	
+
+
+; +++ segments +++
+
+#CODE          = $8000 = 32768,  size = $1005 =  4101
+
+; +++ global symbols +++
+
+DemoCode      = $802F = 32815          kernel.asm:76
+IsCallRoutine = $800E = 32782          kernel.asm:41
+MainLoop      = $8008 = 32776          kernel.asm:28
+Reloader      = $8029 = 32809          kernel.asm:69
+ReturnCode    = $801E = 32798          kernel.asm:64
+Stack         = $5C00 = 23552          kernel.asm:12
+StackPointer  = $800F = 32783          kernel.asm:44
+TestCall1     = $9003 = 36867          kernel.asm:84
+TestWord1     = $9000 = 36864          kernel.asm:81
+_end          = $9005 = 36869          kernel.asm:13 (unused)
+_size         = $1005 =  4101          kernel.asm:13 (unused)
+
+
+total time: 0.0013 sec.
+no errors
